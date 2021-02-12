@@ -60,12 +60,15 @@ while i>=-F: #loops through all mF values for F=2 in 2S1/2 state in 7Li
 
 
 
-def iterate(atom_array, index, n_chunks):
+def iterate(array, index, n_chunks):
 
-	state_index = [] #hold the indices of atoms depending on state. i.e. state_index[0] holds the indicies of atoms in state F=2 mF=2 in the array atom_array.
-	for _ in range(2*F + 1): #loop through the total number of states available for atoms to create array
-		state_index.append([])
-	state_index[2] = list(np.arange(0,len(atom_array), 1)) #initially set all atoms to state mF=0 F=2
+	atom_array = np.zeros((len(array),7)) #create array to hold atoms and their states
+	if len(array[0])==7:#if array already holds the atom's states 
+		atom_array = array
+	else: #if the atoms havea an unspecified state then put them all in mF=0
+		atom_array[:,:6] = array
+
+
 
 	t = 0
 	loop = time.perf_counter()
@@ -73,10 +76,11 @@ def iterate(atom_array, index, n_chunks):
 	while t < t_end:
 
 		for x in range(2*F + 1): #propagate each atom. #Loop through each array for each state
-			if len(state_index[x]) != 0:
-				atom_array[np.array(state_index[x])] = rVV(interpolators[x], np.take(atom_array, state_index[x], axis=0), dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
+			mask = atom_array[:,6] == x #create mask of which elements are in state x
+			if len(mask)!=0:
+				atom_array[mask][:,:6] = rVV(interpolators[x], atom_array[mask][:,:6], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
 
-		atom_array, state_index = Laser(atom_array, state_index, trap, dt) #this can be called no matter the state of the atom as it can always interact with the laser.
+		atom_array = Laser(atom_array, trap, dt) #this can be called no matter the state of the atom as it can always interact with the laser.
 
 		t += dt
 
