@@ -98,7 +98,7 @@ def Laser(atom_array, trap,dt):
             indicies.append(i) #add index to list to remove row from array at end of loop
             continue #continue to next atom
 
-        laser_index, transition_index = calculate_probability(atom, atom[6], trap, dt) #check whether a transition occurs for the atom
+        laser_index, transition_index = calculate_probability(atom[:6], atom[6], trap, dt) #check whether a transition occurs for the atom
 
         if isnan(laser_index):
             continue #if no interaction then skip to next atom
