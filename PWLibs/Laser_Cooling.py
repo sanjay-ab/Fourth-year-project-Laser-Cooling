@@ -61,7 +61,7 @@ def calculate_probability(atom, mF, trap, dt):
         W[2]/(1+s_L*W[2] + (4/gamma**2) * (detune + np.dot(kLs[i],atom[3:]) + lower_state_shift - upper_state_shifts[2])**2)])
 
     #below samples the probabilities to find whether a transition occurs
-    print(probabilities)
+
     prob_1 = probabilities[0,0]
 
     random_number = np.random.rand()
@@ -90,54 +90,39 @@ def calculate_probability(atom, mF, trap, dt):
             prob_1 = prob_2
 
 
-def Laser(atom_array, state_index, trap,dt):
+def Laser(atom_array, trap,dt):
+    indicies = []
+    for i, atom in atom_array:
 
-    indices_to_add = [] #array to hold the indices to add to each state
-    for _ in range(len(state_index)): #create array
-        indices_to_add.append([])
+        if isnan(atom[0]): #check if atom has left the trap
+            indicies.append(i) #add index to list to remove row from array at end of loop
+            continue #continue to next atom
 
-    for x, array in enumerate(state_index): #loop through each state array in state_index
-        for y, index in enumerate(array): #loop through each index in the array
+        laser_index, transition_index = calculate_probability(atom, atom[6], trap, dt) #check whether a transition occurs for the atom
 
-            atom = atom_array[index] #get atom in given state
+        if isnan(laser_index):
+            continue #if no interaction then skip to next atom
 
-            if isnan(atom[0]): #check if atom has left the trap
-                del state_index[x][y] #remove the index of the atom from the index array but leave the atom in the atom array so that the index array still points to the right locations
-                continue #if atom has left the trap then skip to next atom 
+        #if there is an interaction
+        k_mod = np.linalg.norm(kLs[laser_index]) #k vector of laser that atom interacted with
 
-            laser_index, transition_index = calculate_probability(atom, 2-x, trap, dt)
+        theta = np.random.rand()*np.pi 
+        phi = np.random.rand()*2*np.pi
 
-            if isnan(laser_index):
-                continue #if no interaction then skip to next atom
+        k_s = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) #select k vector of photon spontaneously emitted using a random uniform distribution
 
-            #if there is an interaction
-            k_mod = np.linalg.norm(kLs[laser_index]) #k vector of laser that atom interacted with
+        atom[3:6] += ((sc.hbar*k_mod)/mLi) * (kLs[laser_index]/k_mod + k_s) #change velocity of atom due to interaction event
+        upper_state = atom[6] + (1 - transition_index) #mF value of the upper state the atom transitions to
 
-            theta = np.random.rand()*np.pi
-            phi = np.random.rand()*2*np.pi
+        if abs(upper_state) == 3: #atom transitioned to mF=3 state
+            atom[6] = 2 * upper_state/3 #atom returns to either mF=+2,-2 state.
+        
+        elif abs(upper_state) == 2: #atom transitioned to mF=2 state
+            atom[6] = (upper_state/2) * np.random.randint(1,3) #atom returns to either the mF=+-1 state or mF=+-2 state with a 50/50 chance of either
 
-            k_s = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) #select k vector of photon spontaneously emitted using a random uniform distribution
+        else: #atom is in mF=+1,0,-1
+            atom[6] = upper_state + np.random.randint(-1,2) #mF can change by any of +1,0,-1 
 
-            atom[3:] += ((sc.hbar*k_mod)/mLi) * (kLs[laser_index]/k_mod + k_s) #change velocity of atom due to interaction event
+    atom_array = np.delete(atom_array,indicies,axis=0) #delete rows of atoms that have left the trap
 
-            upper_state = (2-x) + (1 - transition_index) #mF value of the upper state the atom transitions to
-
-            if abs(upper_state) == 3: #atom transitioned to mF=3 state
-                z = 2 - 2 * upper_state/3 #atom returns to either mF=+2,-2 state.
-                indices_to_add[int(z)].append(index)
-                del state_index[x][y]
-            
-            elif abs(upper_state) == 2: #atom transitioned to mF=2 state
-                z = 2 - (upper_state/2) * np.random.randint(1,3) #atom returns to either the mF=+-1 state or mF=+-2 state with a 50/50 chance of either
-                indices_to_add[int(z)].append(index)
-                del state_index[x][y]
-
-            else: #atom is in mF=+1,0,-1
-                z = 2 - upper_state + np.random.randint(-1,2) #mF can change by any of +1,0,-1 
-                indices_to_add[int(z)].append(index)
-                del state_index[x][y]
-
-    for i in range(len(state_index)):
-        state_index[i].extend(indices_to_add[i]) #add the modified indicies to the state index array. 
-
-    return atom_array, state_index
+    return atom_array
