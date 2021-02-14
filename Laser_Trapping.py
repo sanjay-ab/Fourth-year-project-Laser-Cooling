@@ -4,6 +4,7 @@ import itertools
 import time
 from os import cpu_count
 from sys import platform
+from csv import writer
 
 import numpy as np
 import scipy.constants as sc
@@ -19,6 +20,8 @@ mLi = 6.941*sc.physical_constants["atomic mass constant"][0] #mass of lithium in
 timer = time.perf_counter()
 dt = 2e-8 #timestep of simulation
 t_end = 1e-3 #end of simulation
+times_to_save = [] #list times in the simulation in which to save the data
+number_of_saves = len(times_to_save)
 F = 2 #F number of the ground state
 
 # Location of the field source file, depending on operating platform
@@ -39,6 +42,10 @@ LiEnergies = Lizeeman(trapfield)	# this instantiates the H Zeeman energy class w
 
 trap = tricubic(trapfield,'quiet') #creates an interpolator for the trapfield so that we can find the magnetic field vector at any point in the trap.
 
+#"tricubic" creates an instance of the tricubic interpolator for this energy field
+# We can now query arbitrary coordinates within the trap volume and get the interpolated Zeeman energy and its gradient
+#We create interpolators for each other mF value in the F=2 2S1/2 state of 7Li.
+
 interpolators = []
 i = F
 while i>=-F: #loops through all mF values for F=2 in 2S1/2 state in 7Li
@@ -52,14 +59,6 @@ while i>=-F: #loops through all mF values for F=2 in 2S1/2 state in 7Li
 
 	i -= 1
 
-#"tricubic" creates an instance of the tricubic interpolator for this energy field
-# We can now query arbitrary coordinates within the trap volume and get the interpolated Zeeman energy and its gradient
-#We create interpolators for each other mF value in the F=2 2S1/2 state of 7Li.
-
-
-
-
-
 def iterate(array, index, n_chunks):
 
 	atom_array = np.zeros((len(array),7)) #create array to hold atoms and their states
@@ -68,14 +67,13 @@ def iterate(array, index, n_chunks):
 	else: #if the atoms havea an unspecified state then put them all in mF=0
 		atom_array[:,:6] = array
 
-
-
 	t = 0
 	loop = time.perf_counter()
+	pointer = 0
 
 	while t < t_end:
 
-		for x in range(2*F + 1): #propagate each atom. #Loop through each array for each state
+		for x in range(2*F + 1): #propagate each atom. 
 			mask = atom_array[:,6] == x #create mask of which elements are in state x
 			if len(mask)!=0:
 				atom_array[mask][:,:6] = rVV(interpolators[x], atom_array[mask][:,:6], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
@@ -87,6 +85,15 @@ def iterate(array, index, n_chunks):
 		if time.perf_counter()- loop > 60:	# every 60 seconds this will meet this criterion and run the status update code below
 			print(f'Chunk {index} loop ' + '{:.1f}'.format(100 * (t / t_end)) + ' % complete. Time elapsed: {}s'.format(int(time.perf_counter()-timer)))	# percentage complete
 			loop = time.perf_counter()	# reset status counter
+
+		if pointer != number_of_saves:
+			if t>times_to_save[pointer]: #save data to a file at specified time through iteration
+				with open(f"Output{slash}Li_end t={times_to_save[pointer]} dt={dt}.csv",'a+',newline='') as outfile:
+					csv_writer = writer(outfile)
+					for row in atom_array:
+						csv_writer.writerow(row)
+
+				pointer += 1
 
 	print("\n Chunk {} of {} complete. \n Time elapsed: {}s.".format(index, n_chunks, int(time.perf_counter()-timer))) #print index to get a sense of how far through the iteration we are
 	return atom_array #return the chunk
@@ -132,7 +139,7 @@ def main():
 
 	print("Saving output")
 	np.savetxt(f"Output{slash}Li_init.csv", LiRange_init, delimiter=',')
-	np.savetxt(f"Output{slash}Li_end t={t_end} dt={dt} Nli=1000.csv", LiRange, delimiter=',')
+	np.savetxt(f"Output{slash}Li_end t={t_end} dt={dt}.csv", LiRange, delimiter=',')
 	print("Done")
 
 	#print("Graphing Output")
