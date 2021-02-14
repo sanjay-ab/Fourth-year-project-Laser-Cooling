@@ -52,9 +52,9 @@ def calculate_probability(atom, mF, trap, dt):
         W = np.array([abs(E[0]),abs(E[1]), abs(E[2])])**2 #calculate Wij weights for transitions (mf=+1 , 0 , -1)
 
         Bmod = np.linalg.norm(B)
-        lower_state_shift = Zeeman_Shift.S_energy(mF,Bmod) #calculate zeeman shift of the current atom state #L=0 J=1/2 F=2
+        lower_state_shift = Zeeman_Shift.S_energy(int(mF),Bmod) #calculate zeeman shift of the current atom state #L=0 J=1/2 F=2
 
-        upper_state_shifts = Zeeman_Shift.P_adjacent_energies(mF, Bmod) #calculate zeeman shift of possible upper atoms states (deltamF=+1,0,-1)
+        upper_state_shifts = Zeeman_Shift.P_adjacent_energies(int(mF), Bmod) #calculate zeeman shift of possible upper atoms states (deltamF=+1,0,-1)
 
         probabilities[i] = (gamma*s_L*dt/2)*np.array([W[0]/(1+s_L*W[0] + (4/gamma**2) * (detune + np.dot(kLs[i],atom[3:]) + lower_state_shift - upper_state_shifts[0])**2), #calculate probability of transition to each possible upper state.
         W[1]/(1+s_L*W[1] + (4/gamma**2) * (detune + np.dot(kLs[i],atom[3:]) + lower_state_shift - upper_state_shifts[1])**2),
@@ -92,7 +92,7 @@ def calculate_probability(atom, mF, trap, dt):
 
 def Laser(atom_array, trap,dt):
     indicies = []
-    for i, atom in atom_array:
+    for i, atom in enumerate(atom_array):
 
         if isnan(atom[0]): #check if atom has left the trap
             indicies.append(i) #add index to list to remove row from array at end of loop
@@ -111,17 +111,17 @@ def Laser(atom_array, trap,dt):
 
         k_s = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) #select k vector of photon spontaneously emitted using a random uniform distribution
 
-        atom[3:6] += ((sc.hbar*k_mod)/mLi) * (kLs[laser_index]/k_mod + k_s) #change velocity of atom due to interaction event
+        atom_array[i,3:6] += ((sc.hbar*k_mod)/mLi) * (kLs[laser_index]/k_mod + k_s) #change velocity of atom due to interaction event
         upper_state = atom[6] + (1 - transition_index) #mF value of the upper state the atom transitions to
 
         if abs(upper_state) == 3: #atom transitioned to mF=3 state
-            atom[6] = 2 * upper_state/3 #atom returns to either mF=+2,-2 state.
+            atom_array[i,6] = 2 * upper_state/3 #atom returns to either mF=+2,-2 state.
         
         elif abs(upper_state) == 2: #atom transitioned to mF=2 state
-            atom[6] = (upper_state/2) * np.random.randint(1,3) #atom returns to either the mF=+-1 state or mF=+-2 state with a 50/50 chance of either
+            atom_array[i,6] = (upper_state/2) * np.random.randint(1,3) #atom returns to either the mF=+-1 state or mF=+-2 state with a 50/50 chance of either
 
         else: #atom is in mF=+1,0,-1
-            atom[6] = upper_state + np.random.randint(-1,2) #mF can change by any of +1,0,-1 
+            atom_array[i,6] = upper_state + np.random.randint(-1,2) #mF can change by any of +1,0,-1 
 
     atom_array = np.delete(atom_array,indicies,axis=0) #delete rows of atoms that have left the trap
 
