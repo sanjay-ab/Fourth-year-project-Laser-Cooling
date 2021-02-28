@@ -10,19 +10,23 @@ import numpy as np
 import scipy.constants as sc
 
 from PWLibs.Li_Plotting import plotting
-from PWLibs.Trap_Dist import makeLi
 from PWLibs.TrapVV import rVV
 from PWLibs.Li_GS_E import Lizeeman
 from PWLibs.ARBInterp import tricubic
 from PWLibs.Laser_Cooling import Laser
 
+gamma = 2*np.pi * 5.92e6 #natural linewidth of Lithium (2pi*hz)
 mLi = 6.941*sc.physical_constants["atomic mass constant"][0] #mass of lithium in kg
 timer = time.perf_counter()
-dt = 2e-8 #timestep of simulation
-t_end = 1e-3 #end of simulation
-times_to_save = [] #list times in the simulation in which to save the data
+dt = 2e-8 #timestep of simulation (s)
+t_end = 1e-3 #end of simulation (s)
+times_to_save = [1e-4, 5e-4] #list times in the simulation in which to save the data
 number_of_saves = len(times_to_save)
 F = 2 #F number of the ground state
+det = -4
+detuning = det*gamma #detuning of lasers (w-w0)
+S_0 = 20 #ratio of I0/Isat for lasers
+W_0 = 3e-3 #waist of laser beams
 
 # Location of the field source file, depending on operating platform
 if platform == "win32":
@@ -31,7 +35,7 @@ elif platform == "linux" or "linux2":
 	slash = "/"
 
 
-trapfield=np.genfromtxt(f"Input{slash}SmCo28.csv", delimiter=',') # Load MT-MOT magnetic field
+trapfield=np.genfromtxt(f"Input{slash}old_Trap.csv", delimiter=',') # Load MT-MOT magnetic field
 trapfield[:,:3]*=1e-3 # Modelled the field in mm for ease, make ;it m
 # This is a vector field but the next piece of code automatically takes the magnitude of the field
 
@@ -72,13 +76,14 @@ def iterate(array, index, n_chunks):
 	pointer = 0
 
 	while t < t_end:
-
+		arr = atom_array[:,:6] #create new array excluding column for index
 		for x in range(2*F + 1): #propagate each atom. 
 			mask = atom_array[:,6] == x #create mask of which elements are in state x
 			if len(mask)!=0:
-				atom_array[mask][:,:6] = rVV(interpolators[x], atom_array[mask][:,:6], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
+				arr[mask] = rVV(interpolators[x], arr[mask], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
+		atom_array[:,:6] == arr #assign new speeds to full atom array
 
-		atom_array = Laser(atom_array, trap, dt) #this can be called no matter the state of the atom as it can always interact with the laser.
+		atom_array = Laser(atom_array, trap, dt, detuning, S_0, W_0) #this can be called no matter the state of the atom as it can always interact with the laser.
 
 		t += dt
 
@@ -88,7 +93,7 @@ def iterate(array, index, n_chunks):
 
 		if pointer != number_of_saves:
 			if t>times_to_save[pointer]: #save data to a file at specified time through iteration
-				with open(f"Output{slash}Li_end t={times_to_save[pointer]} dt={dt}.csv",'a+',newline='') as outfile:
+				with open(f"Output{slash}Li_end t={times_to_save[pointer]} dt={dt} detuning={det}gamma S={S_0}.csv",'a+',newline='') as outfile:
 					csv_writer = writer(outfile)
 					for row in atom_array:
 						csv_writer.writerow(row)
@@ -102,13 +107,8 @@ def iterate(array, index, n_chunks):
 
 
 def main():
-	#N = 1000 #starting number of lithium particles
-	#T = 0.01 #starting temperature of lithium cloud
-	#rsd = 1e-3
 
-	#LiRange_init = makeLi(N, T, rsd) #create initial lithium distribution
-	#np.savetxt("Li_init N=1000 T=0.01 rsd=1e-3.csv", LiRange_init, delimiter=',')
-	LiRange_init = np.genfromtxt(f"Input{slash}Li_init N=1000 T=0.01 rsd=1e-3.csv", delimiter=',')
+	LiRange_init = np.genfromtxt(f"Input{slash}Li_init N=1000 T=0.05 rsd=1e-3.csv", delimiter=',') #get initial distribution of lithium 
 
 	print("Solving particle motion")
 
@@ -139,7 +139,7 @@ def main():
 
 	print("Saving output")
 	np.savetxt(f"Output{slash}Li_init.csv", LiRange_init, delimiter=',')
-	np.savetxt(f"Output{slash}Li_end t={t_end} dt={dt}.csv", LiRange, delimiter=',')
+	np.savetxt(f"Output{slash}Li_end t={t_end} dt={dt} detuning={det}gamma S={S_0}.csv", LiRange, delimiter=',')
 	print("Done")
 
 	#print("Graphing Output")
