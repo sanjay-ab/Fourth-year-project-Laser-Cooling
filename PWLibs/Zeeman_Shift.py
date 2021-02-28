@@ -75,4 +75,4 @@ class zeeman_shift:
 
     def P_adjacent_energies(self, mF, Bfield):
         #doesn't work for mF=+-3 but that should never be an input, max input should be mF=+-2
-        return (self._P[1 + 3-mF](Bfield), self._P[3-mF](Bfield), self._P[-1 + 3-mF](Bfield)) #return the zeeman shifts (2pi*Hz) for the 2P3/2 state for adjacent mF levels as to the one specified
+        return (self._P[-1 + 3-mF](Bfield), self._P[3-mF](Bfield), self._P[1 + 3-mF](Bfield)) #return the zeeman shifts (2pi*Hz) for the 2P3/2 state for adjacent mF levels as to the one specified (Deltamf=+1,0,-1)
