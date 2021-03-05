@@ -33,16 +33,16 @@ def calculate_probability(atom, mF, B, dt, omega_L, S_0, W_0, k_mod):
         if i in (0,1): #x lasers
             #x and y direction lasers are LCP wrt propagation direction
             index1, index2, index3 = 0, 1, 2 #define indicies for calculating waist of laser
-            pol = 1 # define laser as LCP polarized
+            pol = -1 # define laser as LCP polarized (LCP photon possesses +hbar of momentum so effects the mF+1 transition?)
 
         elif i in (2,3): #+y laser
             index1, index2, index3 = 1, 2, 0
-            pol = 1 # define laser as LCP polarized
+            pol = -1 # define laser as LCP polarized
 
         else: #+z laser
             #z direction lasers are RCP wrt propagation direction
             index1, index2, index3 = 2, 0, 1
-            pol = -1 # define laser as RCP polarized
+            pol = 1 # define laser as RCP polarized 
 
         W = W_0 * np.sqrt(1 + ( 2*atom[index1] / (k_mod * W_0**2) )**2 ) #calculate waist. 
         S = S_0 * (W_0/W)**2 * np.exp( -2 * (atom[index2]**2 + atom[index3]**2 ) / W**2 ) #calculate I/Isat using eqn for gaussian beam intensity
