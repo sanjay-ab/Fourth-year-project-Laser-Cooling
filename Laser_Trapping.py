@@ -18,7 +18,6 @@ from PWLibs.Laser_Cooling import Laser
 gamma = 2*np.pi * 5.92e6 #natural linewidth of Lithium (2pi*hz)
 mLi = 6.941*sc.physical_constants["atomic mass constant"][0] #mass of lithium in kg
 timer = time.perf_counter()
-F = 2 #F number of the ground state
 
 dt = 2e-8 #timestep of simulation (s)
 t_start = 0 #start time of simulation
@@ -27,6 +26,7 @@ times_to_save = [1e-4,5e-4] #list times in the simulation in which to save the d
 prev_det = "" #previous detunings written in pairs of (detuning, time til changed) e.g. (-7, 1ms)
 det_times = [] #times at which to change the detunings. Array is one smaller than the "det" array below
 det = [-7] #different detunings to change to 
+detuning_r = -gamma #detuning for the repump laser
 S_0 = 2 #ratio of I0/Isat for lasers
 W_0 = 3e-3 #waist of laser beams
 
@@ -53,26 +53,36 @@ trap = tricubic(trapfield,'quiet') #creates an interpolator for the trapfield so
 # We can now query arbitrary coordinates within the trap volume and get the interpolated Zeeman energy and its gradient
 #We create interpolators for each other mF value in the F=2 2S1/2 state of 7Li.
 
-interpolators = []
-i = F
-while i>=-F: #loops through all mF values for F=2 in 2S1/2 state in 7Li
+interpolators2 = []
+interpolators1 = []
+
+for i in range(2,-3,-1): #loops through all mF values for F=2 in 2S1/2 state in 7Li
 
 	if i<0:
 		name = f"_{str(abs(i))}" 
 	else:
 		name = str(i)
 
-	interpolators.append(tricubic(getattr(LiEnergies, f"U2{name}"),"quiet")) #adds all interpolators required into the list
+	interpolators2.append(tricubic(getattr(LiEnergies, f"U2{name}"),"quiet")) #adds all interpolators required into the list
 
-	i -= 1
+for i in range(1,-2,-1): #loops through all mF values for F=1 in 2S1/2 state in 7Li
+
+	if i<0:
+		name = f"_{str(abs(i))}" 
+	else:
+		name = str(i)
+
+	interpolators1.append(tricubic(getattr(LiEnergies, f"U1{name}"),"quiet")) #adds all interpolators required into the list
+interpolators = [interpolators1, interpolators2]
 
 def iterate(array, index, n_chunks, prev_dets):
 
-	atom_array = np.zeros((len(array),7)) #create array to hold atoms and their states
-	if len(array[0])==7:#if array already holds the atom's states 
+	atom_array = np.zeros((len(array),8)) #create array to hold atoms and their states
+	if len(array[0])==8:#if array already holds the atom's states 
 		atom_array = array
-	else: #if the atoms havea an unspecified state then put them all in mF=0
+	else: #if the atoms havea an unspecified state then put them all in mF=0 F=2
 		atom_array[:,:6] = array
+		atom_array[:,7] = 2 #set into F=2 state
 
 	t = 0
 	loop = time.perf_counter()
@@ -80,14 +90,20 @@ def iterate(array, index, n_chunks, prev_dets):
 	pointer2 = 0 #for tracking when to change detuning
 
 	while t < t_end:
-		arr = atom_array[:,:6] #create new array excluding column for index
-		for x in range(2*F + 1): #propagate each atom. 
-			mask = atom_array[:,6] == x #create mask of which elements are in state x
-			if len(mask)!=0:
-				arr[mask] = rVV(interpolators[x], arr[mask], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
-		atom_array[:,:6] == arr #assign new speeds to full atom array
 
-		atom_array = Laser(atom_array, trap, dt, det[pointer2]*gamma, S_0, W_0) #this can be called no matter the state of the atom as it can always interact with the laser.
+		arr = atom_array[:,:6] #create new array excluding column for index
+		for F in [1,2]:
+			for x in range(2*F + 1): #propagate each atom. 
+				mask1 = atom_array[:,7] == F #mask of which elements are in state F
+				mask2 = atom_array[:,6] == x #create mask of which elements are in state x
+				mask = mask1 & mask2 #combine masks 
+
+				if len(mask)!=0:
+					arr[mask] = rVV(interpolators[F-1][x], arr[mask], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
+
+			atom_array[:,:6] == arr #assign new speeds to full atom array
+
+		atom_array = Laser(atom_array, trap, dt, det[pointer2]*gamma, detuning_r, S_0, W_0) #this can be called no matter the state of the atom as it can always interact with the laser.
 
 		t += dt
 
