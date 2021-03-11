@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import concurrent.futures
 import itertools
 import time
@@ -21,14 +22,17 @@ timer = time.perf_counter()
 
 dt = 2e-8 #timestep of simulation (s)
 t_start = 0 #start time of simulation
-t_end = 1e-3 #duration of simulation (s)
-times_to_save = [1e-4,5e-4] #list times in the simulation in which to save the data
+t_end = 2e-3 #duration of simulation (s)
+times_to_save = [5e-4,1e-3,1.5e-3] #list times in the simulation in which to save the data
 prev_det = "" #previous detunings written in pairs of (detuning, time til changed) e.g. (-7, 1ms)
 det_times = [] #times at which to change the detunings. Array is one smaller than the "det" array below
 det = [-7] #different detunings to change to 
-detuning_r = -gamma #detuning for the repump laser
-S_0 = 2 #ratio of I0/Isat for lasers
-W_0 = 3e-3 #waist of laser beams
+det_r = [-5] #detuning for the repump laser
+S_0p = 5 #ratio of I0/Isat for lasers
+S_0r = 20
+W_0 = 1e-3 #waist of laser beams
+pol_p = 1 #polarizations of pump laser beams +1 means it carries -hbar ang mom, -1 means it carries +hbar ang mom
+pol_r = 1 #polarizations of the repump laser beams
 
 # Location of the field source file, depending on operating platform
 if platform == "win32":
@@ -73,6 +77,7 @@ for i in range(1,-2,-1): #loops through all mF values for F=1 in 2S1/2 state in 
 		name = str(i)
 
 	interpolators1.append(tricubic(getattr(LiEnergies, f"U1{name}"),"quiet")) #adds all interpolators required into the list
+	
 interpolators = [interpolators1, interpolators2]
 
 def iterate(array, index, n_chunks, prev_dets):
@@ -93,17 +98,18 @@ def iterate(array, index, n_chunks, prev_dets):
 
 		arr = atom_array[:,:6] #create new array excluding column for index
 		for F in [1,2]:
-			for x in range(2*F + 1): #propagate each atom. 
-				mask1 = atom_array[:,7] == F #mask of which elements are in state F
+			mask1 = atom_array[:,7] == F #mask of which elements are in state F
+
+			for x in range(F, -F -1, -1): #propagate each atom. 
 				mask2 = atom_array[:,6] == x #create mask of which elements are in state x
 				mask = mask1 & mask2 #combine masks 
 
 				if len(mask)!=0:
-					arr[mask] = rVV(interpolators[F-1][x], arr[mask], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
+					arr[mask] = rVV(interpolators[F-1][F-x], arr[mask], dt, mLi) #propagate each atom through the trap - change interpolator depending on what state the atoms are in
 
 			atom_array[:,:6] == arr #assign new speeds to full atom array
 
-		atom_array = Laser(atom_array, trap, dt, det[pointer2]*gamma, detuning_r, S_0, W_0) #this can be called no matter the state of the atom as it can always interact with the laser.
+		atom_array = Laser(atom_array, trap, dt, det[pointer2]*gamma, det_r[pointer2]*gamma, S_0p, S_0r, W_0, pol_p, pol_r) #this can be called no matter the state of the atom as it can always interact with the laser.
 
 		t += dt
 
@@ -114,7 +120,7 @@ def iterate(array, index, n_chunks, prev_dets):
 		if pointer1 != len(times_to_save):
 			if t>times_to_save[pointer1]: #save data to a file at specified time through iteration
 				time_str = format(times_to_save[pointer1] + t_start, ".1e")
-				with open(f"Output{slash}Li_end dt={dt} (detuning, time)={prev_dets}({det[pointer2]},{time_str}) S={S_0} W_0={W_0*1000}mm.csv",'a+',newline='') as outfile:
+				with open(f"Output{slash}Li_end dt={dt} (detuning, time)={prev_dets}({det[pointer2]},{time_str}) Sp={S_0p} Sr={S_0r} W_0={W_0*1000}mm pol(p,r)=({pol_p},{pol_r}).csv",'a+',newline='') as outfile:
 					csv_writer = writer(outfile)
 					for row in atom_array:
 						csv_writer.writerow(row)
@@ -171,7 +177,7 @@ def main(prev_det, LiRange_init):
 
 	print("Saving output")
 	np.savetxt(f"Output{slash}Li_init.csv", LiRange_init, delimiter=',')
-	np.savetxt(f"Output{slash}Li_end dt={dt} (detuning, time)={prev_det} S={S_0} W_0={W_0*1000}mm.csv", LiRange, delimiter=',')
+	np.savetxt(f"Output{slash}Li_end dt={dt} (detuning, time)={prev_det} Sp={S_0p} Sr={S_0r} W_0={W_0*1000}mm pol(p,r)=({pol_p},{pol_r}).csv", LiRange, delimiter=',')
 	print("Done")
 
 	#print("Graphing Output")
