@@ -136,8 +136,7 @@ def calculate_probability(atom, mF, F, B, dt, omega_L, S_0, W_0, k_mod, pol):
             else: #+z laser
                 #z direction lasers are LCP wrt propagation direction
                 index1, index2, index3 = 2, 0, 1
-                pol = pol*-1
-
+                
             W = W_0 * np.sqrt(1 + ( 2*pos[index1] / (k_mod * W_0**2) )**2 ) #calculate waist. 
             S = S_0 * (W_0/W)**2 * np.exp( -2 * (pos[index2]**2 + pos[index3]**2 ) / W**2 ) #calculate I/Isat using eqn for gaussian beam intensity
 
@@ -202,7 +201,7 @@ def Laser(atom_array, trap, dt, detuning, detuning_r, S_0p, S_0r, W_0, pol_p, po
 
         k_s = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) #select k vector of photon spontaneously emitted using a random uniform distribution
 
-        atom_array[i,3:6] += const3 * k_mod * (laser_vectors[laser_index] + k_s) #change velocity of atom due to interaction event
+        atom_array[i,3:6] += const3 * k_mod * (laser_vectors[laser_index] - k_s) #change velocity of atom due to interaction event
 
         upper_state_mF = atom[6] + transition_mF #mF value of the upper state the atom transitions to
         upper_state_F = atom[7] + transition_F
