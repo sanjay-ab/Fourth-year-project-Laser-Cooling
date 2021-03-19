@@ -3,7 +3,7 @@
 import concurrent.futures
 import itertools
 import time
-from os import cpu_count
+from os import cpu_count, mkdir
 from sys import platform
 from csv import writer
 
@@ -15,6 +15,7 @@ from PWLibs.TrapVV import rVV
 from PWLibs.Li_GS_E import Lizeeman
 from PWLibs.ARBInterp import tricubic
 from PWLibs.Laser_Cooling import Laser
+from PWLibs.Trap_Dist import makeLi
 
 gamma = 2*np.pi * 5.92e6 #natural linewidth of Lithium (2pi*hz)
 mLi = 6.941*sc.physical_constants["atomic mass constant"][0] #mass of lithium in kg
@@ -26,13 +27,14 @@ t_end = 4e-3 #duration of simulation (s)
 times_to_save = [5e-4,1e-3,1.5e-3,2e-3,2.5e-3,3e-3,3.5e-3] #list times in the simulation in which to save the data
 prev_det = "" #previous detunings written in pairs of (detuning, time til changed) e.g. (-7, 1ms)
 det_times = [] #times at which to change the detunings. Array is one smaller than the "det" array below
-det = [-3.5] #different detunings to change to 
-det_r = [-3.5] #detuning for the repump laser
-S_0p = 2 #ratio of I0/Isat for pump lasers
-S_0r = 10 #repump laser
-W_0 = 1e-3 #waist of laser beams
-pol_p = 1 #polarizations of pump laser beams +1 means it carries -hbar ang mom, -1 means it carries +hbar ang mom
+det = [-0.5] #different detunings to change to 
+det_r = [-0.5] #detuning for the repump laser
+S_0p = 4 #ratio of I0/Isat for pump lasers
+S_0r =5 #repump laser
+W_0 = 1.5e-3 #waist of laser beams
+pol_p = -1 #polarizations of pump laser beams +1 means it carries -hbar ang mom, -1 means it carries +hbar ang mom
 pol_r = -1 #polarizations of the repump laser beams
+T = 50
 
 # Location of the field source file, depending on operating platform
 if platform == "win32":
@@ -40,7 +42,16 @@ if platform == "win32":
 elif platform == "linux" or "linux2":
 	slash = "/"
 
-LiRange_init = np.genfromtxt(f"Input{slash}Li_init N=1000 T=0.05 rsd=1e-3.csv", delimiter=',') #get initial distribution of lithium 
+#LiRange_init = np.genfromtxt(f"Input{slash}Li_init N=1000 T=0.05 rsd=1e-3.csv", delimiter=',') #get initial distribution of lithium 
+
+dist = makeLi(1000,T/1000,1e-3)
+LiRange_init = np.zeros((1000,9))
+LiRange_init[:,:6] = dist
+LiRange_init[:,7] = 2
+for i in range(1000):
+	LiRange_init[i,6] = np.random.randint(-1,3) #random mF between -1 and 2
+	LiRange_init[i,8] = i #give each atom an id so we can compare initial and final states
+
 
 trapfield=np.genfromtxt(f"Input{slash}SmCo28.csv", delimiter=',') # Load MT-MOT magnetic field
 trapfield[:,:3]*=1e-3 # Modelled the field in mm for ease, make ;it m
@@ -80,14 +91,8 @@ for i in range(1,-2,-1): #loops through all mF values for F=1 in 2S1/2 state in 
 	
 interpolators = [interpolators1, interpolators2]
 
-def iterate(array, index, n_chunks, prev_dets):
-
-	atom_array = np.zeros((len(array),8)) #create array to hold atoms and their states
-	if len(array[0])==8:#if array already holds the atom's states 
-		atom_array = array
-	else: #if the atoms havea an unspecified state then put them all in mF=0 F=2
-		atom_array[:,:6] = array
-		atom_array[:,7] = 2 #set into F=2 state
+def iterate(atom_array, index, n_chunks, prev_dets, name):
+	atom_array = array
 
 	t = 0
 	loop = time.perf_counter()
@@ -120,7 +125,7 @@ def iterate(array, index, n_chunks, prev_dets):
 		if pointer1 != len(times_to_save):
 			if t>times_to_save[pointer1]: #save data to a file at specified time through iteration
 				time_str = format(times_to_save[pointer1] + t_start, ".1e")
-				with open(f"Output{slash}Li_end dt={dt} (det,det_r,t)={prev_dets}({det[pointer2]},{det_r[pointer2]},{time_str}) Sp={S_0p} Sr={S_0r} W_0={W_0*1000}mm pol(p,r)=({pol_p},{pol_r}).csv",'a+',newline='') as outfile:
+				with open(f"Output{slash}{name}{slash}Li_end{T} dt={dt} {prev_dets}({det[pointer2]},{det_r[pointer2]},{time_str}) Sp={S_0p} Sr={S_0r} W_0={W_0*1000}mm pol(p,r)=({pol_p},{pol_r}).csv",'a+',newline='') as outfile:
 					csv_writer = writer(outfile)
 					for row in atom_array:
 						csv_writer.writerow(row)
@@ -130,7 +135,7 @@ def iterate(array, index, n_chunks, prev_dets):
 		if pointer2 != len(det_times): #change variable to help in naming files
 			if t > det_times[pointer2]:
 				time_str = format(det_times[pointer2]+t_start, ".1e")
-				prev_dets = prev_dets + f"({det[pointer2]},{det_r[pointer2]}, {time_str})"
+				prev_dets = prev_dets + f"({det[pointer2]},{det_r[pointer2]},{time_str})"
 				pointer2 += 1
 				
 
@@ -143,6 +148,11 @@ def iterate(array, index, n_chunks, prev_dets):
 def main(prev_det, LiRange_init):
 
 	print(f"Solving particle motion det={det} det_r={det_r}")
+	name = f"T={T} det,det_r={det},{det_r} W_0={W_0} Sp,Sr={S_0p},{S_0r} pol p,r={pol_p},{pol_r}"
+	try:
+		mkdir(f"Output{slash}{name}") 
+	except: #exception occurs if directory already exists. In which case we can ignore the error and continue as normal
+		pass
 
 	chunks_per_workers = 1 #number of chunks per worker - vary between 1 and 40 for efficient execution depending on the length of the simulation
 	n_chunks = chunks_per_workers * cpu_count() #number of chunks (cpu_count yields the number of logical processors on the system)
@@ -154,7 +164,7 @@ def main(prev_det, LiRange_init):
 		to run in parallel with each other. It yields the return value of the function iterate which can be extracted from "results" by iterating through. Above, we create the chunks 
 		we want to execute with rather than using the chunksize parameter. This reduces the overhead in starting and stopping parallel processes by controlling the number of processes created."""
 
-		results = executor.map(iterate, *(chunks,indicies,itertools.repeat(n_chunks,n_chunks),itertools.repeat(prev_det,n_chunks))) #result of simulation
+		results = executor.map(iterate, *(chunks,indicies,itertools.repeat(n_chunks,n_chunks),itertools.repeat(prev_det,n_chunks),itertools.repeat(name,n_chunks))) #result of simulation
 	
 	LiRange = []
 
@@ -176,8 +186,8 @@ def main(prev_det, LiRange_init):
 	print(f"Time elapsed: {int(time.perf_counter()-timer)}s")  #can't just use time.perf_counter() since this is not equal to the simulation time when executing on the supercomputer
 
 	print("Saving output")
-	np.savetxt(f"Output{slash}Li_init.csv", LiRange_init, delimiter=',')
-	np.savetxt(f"Output{slash}Li_end dt={dt} (det,det_r,t)={prev_det} Sp={S_0p} Sr={S_0r} W_0={W_0*1000}mm pol(p,r)=({pol_p},{pol_r}).csv", LiRange, delimiter=',')
+	np.savetxt(f"Output{slash}{name}{slash}Li_init{T}.csv", LiRange_init, delimiter=',')
+	np.savetxt(f"Output{slash}{name}{slash}Li_end{T} dt={dt} {prev_det} Sp={S_0p} Sr={S_0r} W_0={W_0*1000}mm pol(p,r)=({pol_p},{pol_r}).csv", LiRange, delimiter=',')
 	print("Done")
 
 	#print("Graphing Output")
